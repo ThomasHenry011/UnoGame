@@ -10,6 +10,8 @@ const { io } = require("./server");
 const { getBots } = require("./DB/Bots");
 const GameServer = require("./GameServer");
 
+
+
 function joinServer({
   serverId,
   serverPassword = "",
@@ -111,14 +113,15 @@ function startGame(serverId) {
   const server = getServer(serverId);
   if (!server.gameRunning) {
     server.gameRunning = true;
-    if (
-      server.players[server.curPlayer].disconnected ||
-      server.players[server.curPlayer].isBot
-    ) {
+    const curPlayer = server.players[server.curPlayer];
+
+    // Verificar se o jogador atual existe antes de tentar acessar suas propriedades
+    if (curPlayer && (curPlayer.disconnected || curPlayer.isBot)) {
       setTimeout(() => {
         moveBot(server);
       }, 1500);
     }
+
     server.onFinish((playersOrdered) => {
       io.to(serverId).emit("finished-game", playersOrdered);
     });
@@ -134,11 +137,10 @@ function moveBot(server) {
     draw,
   });
 
-  if (
-    server.players[server.curPlayer] &&
-    (server.players[server.curPlayer].disconnected ||
-      server.players[server.curPlayer].isBot)
-  ) {
+  const curPlayer = server.players[server.curPlayer];
+
+  // Verificar se o jogador atual existe antes de tentar acessar suas propriedades
+  if (curPlayer && (curPlayer.disconnected || curPlayer.isBot)) {
     setTimeout(() => {
       moveBot(server);
     }, 1500);
@@ -155,27 +157,29 @@ function move({ socket, cardId, draw }) {
 
   const { nxtPlayer, cardsToDraw } = server.move(draw, card);
 
-  socket.broadcast.to(serverId).emit("move", {
+  // Emite para todos os outros jogadores na sala
+  io.to(serverId).emit("move", {
     nxtPlayer,
     card,
     draw: cardsToDraw?.length,
   });
 
+  // Emite para o jogador que fez a jogada
   socket.emit("move", {
     nxtPlayer,
     card,
     draw: cardsToDraw?.length,
     cardsToDraw,
   });
-  if (
-    server.players[server.curPlayer].disconnected ||
-    server.players[server.curPlayer].isBot
-  ) {
+
+  const curPlayer = server.players[server.curPlayer];
+  if (curPlayer && (curPlayer.disconnected || curPlayer.isBot)) {
     setTimeout(() => {
       moveBot(server);
     }, 1500);
   }
 }
+
 
 function leaveServer(socket) {
   try {
@@ -194,14 +198,15 @@ function leaveServer(socket) {
     if (server.gameRunning) io.to(serverId).emit("player-left", playerId);
     else io.to(serverId).emit("players-changed", server.players);
 
-    if (
-      server.players[server.curPlayer].isBot &&
-      server.players[server.curPlayer].id === playerId
-    )
+    const curPlayer = server.players[server.curPlayer];
+    if (curPlayer && curPlayer.isBot && curPlayer.id === playerId) {
       moveBot(server);
+    }
 
     removePlayer(socket.id);
-  } catch (error) {}
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 module.exports = {
@@ -213,3 +218,4 @@ module.exports = {
   move,
   leaveServer,
 };
+
